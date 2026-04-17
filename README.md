@@ -164,6 +164,37 @@ set -g mouse on
 4. Close the browser whenever you want
 5. Re-open the export later if it is still within the timeout window, or use **Reinitialize web access**
 
+## Example use cases
+
+### Create a new project, then attach from a browser
+
+1. Run `./agentmux.sh`
+2. Choose **New project**
+3. Enter a project name such as `my-app`
+4. Let `agentmux` create `~/projects/my-app`, initialize git, start a tmux session, and launch `codex`
+5. Copy or note the printed `http://...` URL
+6. Open that URL in a web browser on your laptop, phone, or tablet
+
+At that point, the browser is attached to the live tmux session for that project. You can close the browser tab without stopping the underlying tmux or `codex` session.
+
+Later, you can:
+
+- open the same URL again if the export is still running
+- use **Reinitialize web access** to get a fresh URL without restarting the project session
+- attach locally with `tmux attach -t my-app` if you want to work outside the browser
+
+### Attach to an existing project
+
+You can also use `agentmux` with projects that already exist in `~/projects`.
+
+1. Run `./agentmux.sh`
+2. Choose **Attach to existing project**
+3. Pick a directory from the list, or enter one manually
+4. Let `agentmux` start or reuse the matching tmux session
+5. Open the printed URL in your web browser
+
+If that project already has a running tmux session or an existing web export, `agentmux` reuses it instead of creating a duplicate session.
+
 ## Security
 
 This script exposes a real interactive terminal over HTTP.
