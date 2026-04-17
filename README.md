@@ -1,11 +1,62 @@
 # agentmux
 
-A tmux + ttyd launcher for persistent AI coding sessions, project bootstrapping, and phone-friendly web access.
+A tmux + ttyd launcher built around one core idea: keep your real work alive in tmux, then manage and reattach to it from your phone or browser when you're away from your desk.
 
-`agentmux` turns running tmux sessions into temporary web terminals you can open from your phone, tablet, or browser over VPN/Tailscale. It can also create and resume project sessions under `~/projects`, launch `codex` inside tmux, and reinitialize web access without touching the underlying tmux session.
+`agentmux` turns running tmux sessions into temporary web terminals you can open from your phone, tablet, or browser over VPN/Tailscale. The point of the project is simple: ongoing projects should keep running inside persistent tmux sessions, while you get an easy way to check in, manage them, and jump back into them from the road without rebuilding your environment every time. It can also create and resume project sessions under `~/projects`, launch `codex` inside tmux, and reinitialize web access without touching the underlying tmux session.
+
+## Project goal
+
+`agentmux` is for the case where:
+
+- your actual project session lives in tmux and keeps running
+- you want quick phone access while traveling or away from your machine
+- you want to attach from a web browser to ongoing projects without disturbing the underlying tmux session
+- you care more about persistent project continuity than about keeping one browser tab alive
+
+The key distinction is:
+
+- the `tmux` session is the persistent thing
+- the web URL is just a temporary `ttyd` attachment to that session
+
+You can close the browser, let the URL expire, or restart web access without losing the underlying tmux session. If needed, `agentmux` can publish a fresh browser URL for the same already-running session later.
+
+```mermaid
+flowchart TD
+    L[[Local computer]]
+    P[[Phone / tablet]]
+    W([Web browser])
+
+    subgraph WEB[Temporary web access]
+        U[/http://host:port/]
+        T([ttyd export<br>ephemeral / restartable])
+    end
+
+    subgraph BACKEND[Persistent backend session]
+        M[[tmux session<br>keeps running]]
+        C[(codex process)]
+    end
+
+    L --> W
+    P --> W
+    W -->|open temporary URL| U
+    U --> T
+    T -->|attaches into| M
+    M --> C
+
+    classDef device fill:#e3f2fd,stroke:#1e88e5,stroke-width:2px,color:#0d47a1;
+    classDef web fill:#fff3e0,stroke:#fb8c00,stroke-width:2px,color:#e65100;
+    classDef backend fill:#e8f5e9,stroke:#43a047,stroke-width:2px,color:#1b5e20;
+
+    class L,P,W device;
+    class U,T web;
+    class M,C backend;
+```
 
 ## What it does
 
+- Puts persistent tmux sessions at the center of the workflow
+- Makes it easy to manage those tmux sessions from your phone while on the road
+- Lets you attach to ongoing projects from a web browser without losing session state
 - Shows an arrow-key menu of running tmux sessions
 - Exports a chosen tmux session over HTTP using `ttyd`
 - Reuses an existing export for the same session when possible
@@ -21,6 +72,7 @@ A tmux + ttyd launcher for persistent AI coding sessions, project bootstrapping,
 
 ## Important behavior
 
+- Think of `tmux` as the durable backend session, and `ttyd` as a disposable browser window into it.
 - The timeout applies only to the **web export** (`ttyd`), not to tmux itself.
 - Stopping web access never kills tmux or the `codex` process inside it.
 - Reinitializing web access only restarts the browser-facing layer.
@@ -159,10 +211,11 @@ set -g mouse on
 ## Typical workflow
 
 1. Start or pick a tmux session with `agentmux`
-2. Note the printed URLs
-3. Open the URL from your phone over Tailscale or VPN
-4. Close the browser whenever you want
-5. Re-open the export later if it is still within the timeout window, or use **Reinitialize web access**
+2. Note the printed URL for the current web export
+3. Open the URL from your phone over Tailscale or VPN when you're away from your desk
+4. Close the browser whenever you want; the tmux session keeps running
+5. Re-open the same URL later if that export is still alive, or use **Reinitialize web access** to get a fresh temporary URL for the same tmux session
+6. Keep using the same underlying tmux session as the long-lived home for that ongoing project
 
 ## Example use cases
 
@@ -175,7 +228,7 @@ set -g mouse on
 5. Copy or note the printed `http://...` URL
 6. Open that URL in a web browser on your laptop, phone, or tablet
 
-At that point, the browser is attached to the live tmux session for that project. You can close the browser tab without stopping the underlying tmux or `codex` session.
+At that point, the browser is attached to the live tmux session for that project. That is the main point of `agentmux`: the browser attachment is temporary, but the ongoing project session in tmux is not. You can check in from your phone, close the browser tab, and come back later without stopping the underlying tmux or `codex` session.
 
 Later, you can:
 
@@ -193,7 +246,7 @@ You can also use `agentmux` with projects that already exist in `~/projects`.
 4. Let `agentmux` start or reuse the matching tmux session
 5. Open the printed URL in your web browser
 
-If that project already has a running tmux session or an existing web export, `agentmux` reuses it instead of creating a duplicate session.
+If that project already has a running tmux session, `agentmux` reuses that persistent session instead of creating a duplicate. If there is already a live web export for it, `agentmux` reuses that too; otherwise it can create a fresh temporary export for the same tmux session.
 
 ## Security
 

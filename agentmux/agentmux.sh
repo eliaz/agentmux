@@ -48,6 +48,7 @@ refresh_sessions() {
 draw_menu() {
   printf '\033[2J\033[H'
   echo "Choose an action"
+  echo "Persistent tmux sessions, easy phone access, browser attach for ongoing projects."
   echo
   echo "  ↑/↓ or j/k = move    Enter = select    q = quit"
   echo
