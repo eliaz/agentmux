@@ -1,0 +1,158 @@
+Build a small Linux CLI project called `agentmux` from scratch.
+
+Goal:
+This tool exists to make long-running tmux sessions easy to manage from your phone while you are on the road, and to make it easy to attach to ongoing project sessions from a web browser without killing the underlying tmux session. The browser connection is temporary. The tmux session is the durable thing.
+
+Project structure:
+- `README.md`
+- `agentmux/agentmux.sh`
+
+Implementation constraints:
+- Use Bash, not Python.
+- The main implementation must be a single Bash script at `agentmux/agentmux.sh`.
+- The script should be executable with `#!/usr/bin/env bash`.
+- Use `set -uo pipefail`.
+- Keep the implementation dependency-light and shell-native.
+- Do not use temp state files for tracking exports.
+- Use running `ttyd` processes as the source of truth.
+
+Required tools:
+- `bash`
+- `tmux`
+- `ttyd`
+- `timeout` from GNU coreutils
+- `git`
+- `mkdir`
+- `find`
+- `ps`
+- `awk`
+- `grep`
+- `sed`
+- `hostname`
+
+Optional but used for project actions:
+- `codex`
+
+Behavior requirements:
+
+1. Configuration
+- Accept an optional first positional argument for base port, default `7681`.
+- Accept an env var `DURATION` for web export lifetime, default `6h`.
+- Use `PROJECTS_DIR="${HOME}/projects"`.
+
+2. Purpose and UX
+- Present an interactive terminal menu navigable with up/down arrows and `j`/`k`.
+- Menu header should make the purpose obvious: persistent tmux sessions, easy phone access, browser attach for ongoing projects.
+- Menu entries must include:
+  - `[ New project ]`
+  - `[ Attach to existing project ]`
+  - `[ Stop existing export ]`
+  - `[ Reinitialize web access ]`
+  - then all currently running tmux session names
+- `q` should quit.
+
+3. Core model
+- Treat tmux as the persistent backend session.
+- Treat `ttyd` as a disposable browser-facing attachment.
+- Closing a browser or letting the timeout expire must not kill tmux.
+- Stopping or reinitializing web access must only affect `ttyd`, not tmux.
+
+4. Export behavior
+- Export a tmux session through `ttyd` over HTTP.
+- Bind on all interfaces by default.
+- Use the next free port starting from the base port.
+- Reuse an existing export for the same tmux session when possible.
+- If an export already exists for a session, print its info instead of creating another one.
+- Start `ttyd` through:
+  - `timeout --foreground -k 10s "$DURATION" ttyd ... tmux attach -t "$session"`
+- Include these `ttyd` options:
+  - `-W`
+  - `-m 1`
+  - `-p "$port"`
+  - `-t "titleFixed=tmux:$session"`
+  - `-t "scrollback=20000"`
+  - `-t "scrollOnUserInput=false"`
+- Launch it with `nohup ... >/dev/null 2>&1 < /dev/null &`
+
+5. Export detection
+- Never store export metadata in `/tmp` or cache files.
+- Detect exports by inspecting `ps -eo pid=,args=` and matching running `ttyd` processes.
+- Match an export by finding both:
+  - `titleFixed=tmux:<session>`
+  - `tmux attach -t <session>`
+- Extract the port from the command line.
+
+6. Displayed export info
+- When showing an export, print:
+  - session name
+  - PID
+  - port
+  - URL using `hostname -I | awk '{print $1}'`
+  - URL using hostname
+- Also print that the timeout only applies to the web export, and that tmux / codex keep running.
+- Mention browser scrollback and suggest these tmux settings:
+  - `set -g history-limit 50000`
+  - `set -g mouse on`
+
+7. New project flow
+- Prompt for a project name.
+- Allow only `a-z A-Z 0-9 . _ -`
+- Reject empty, `.`, `..`, names containing `/`.
+- Project directory is `~/projects/<name>`.
+- Create the directory if missing.
+- Run `git init` inside it.
+- If the directory is new, start tmux with:
+  - `cd <project_dir> && exec codex`
+- If the directory already exists, start tmux with:
+  - `cd <project_dir> && exec codex resume`
+- If a tmux session with that project name already exists, do not create another one. Just show or reuse the export for that existing session.
+
+8. Attach to existing project flow
+- Show a picker of directories directly inside `~/projects`.
+- Include an extra manual option:
+  - `[ Type project name manually ]`
+- If a tmux session with that project name already exists:
+  - do not create a duplicate
+  - show the existing export URL if one exists
+  - otherwise say there is no active HTTP export
+  - tell the user to choose the existing tmux session from the main menu
+- If no tmux session exists:
+  - ensure the directory exists
+  - run `git init`
+  - start tmux with `cd <project_dir> && exec codex resume`
+  - export it over HTTP
+
+9. Stop existing export
+- Let the user choose among tmux sessions that currently have an active export.
+- Stop only the matching `ttyd` process.
+- Try `kill`, then `kill -9` if needed.
+- Confirm that the tmux / codex session is still running.
+
+10. Reinitialize web access
+- Let the user choose among tmux sessions that currently have an active export.
+- Stop only the existing `ttyd` process for that session.
+- Start a fresh export on a free port.
+- Keep tmux alive throughout.
+
+11. Existing tmux sessions
+- Selecting a normal tmux session from the main menu should:
+  - print existing export info if already exported
+  - otherwise start a new export for that session
+
+12. README requirements
+- Explain the project in plain language.
+- Make the main point explicit: this is for managing persistent tmux sessions from your phone while traveling, and for attaching to ongoing projects from a web browser.
+- Explain that tmux is persistent and the web URL is temporary.
+- Include a mermaid diagram showing local computer / phone / browser -> ttyd -> tmux -> codex.
+- Document requirements, install, run commands, menu actions, export detection, typical workflow, example use cases, security notes, and tmux history tips.
+- In the install/run section, show:
+  - `chmod +x agentmux/agentmux.sh`
+  - `./agentmux/agentmux.sh`
+  - `./agentmux/agentmux.sh 9000`
+  - `DURATION=8h ./agentmux/agentmux.sh`
+
+Output requirements:
+- Create the full Bash script.
+- Create the README.
+- Make the script robust and readable.
+- Do not add extra frameworks, daemons, databases, or temp-state layers.

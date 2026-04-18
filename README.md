@@ -104,25 +104,25 @@ Optional but needed for project actions:
 Clone the repo and make the script executable:
 
 ```bash
-chmod +x agentmux.sh
+chmod +x agentmux/agentmux.sh
 ```
 
 You can then run it directly:
 
 ```bash
-./agentmux.sh
+./agentmux/agentmux.sh
 ```
 
 Or choose a different starting port:
 
 ```bash
-./agentmux.sh 9000
+./agentmux/agentmux.sh 9000
 ```
 
 You can also override the web-export lifetime:
 
 ```bash
-DURATION=8h ./agentmux.sh
+DURATION=8h ./agentmux/agentmux.sh
 ```
 
 Default values:
@@ -130,6 +130,17 @@ Default values:
 - base port: `7681`
 - export duration: `6h`
 - projects directory: `~/projects`
+
+## Alternative: Recreate It With An LLM
+
+If you want an alternative to cloning the repo directly, use [AGENT_BOOTSTRAP_PROMPT.txt](AGENT_BOOTSTRAP_PROMPT.txt). It contains a prompt that asks an LLM to rebuild `agentmux` from scratch with the same tmux-first, phone-on-the-road, browser-attach workflow.
+
+Use that prompt in your preferred coding model, let it generate the files, then run the generated script the same way:
+
+```bash
+chmod +x agentmux/agentmux.sh
+./agentmux/agentmux.sh
+```
 
 ## Menu actions
 
