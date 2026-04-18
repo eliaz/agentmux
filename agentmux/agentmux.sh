@@ -10,6 +10,9 @@ ATTACH_PROJECT_LABEL="[ Attach to existing project ]"
 STOP_EXPORT_LABEL="[ Stop existing export ]"
 REINIT_EXPORT_LABEL="[ Reinitialize web access ]"
 MANUAL_PROJECT_LABEL="[ Type project name manually ]"
+WEB_ACCESS_LABEL="[ Open web access ]"
+LOCAL_ATTACH_LABEL="[ Attach in this terminal ]"
+ACTION_ITEM_COUNT=4
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -19,8 +22,6 @@ need() {
 }
 
 need tmux
-need ttyd
-need timeout
 need git
 need mkdir
 need ps
@@ -45,23 +46,61 @@ refresh_sessions() {
   MENU_ITEMS+=("${TMUX_SESSIONS[@]}")
 }
 
+need_web_tools() {
+  need ttyd
+  need timeout
+}
+
 draw_menu() {
+  local i label info
+
   printf '\033[2J\033[H'
   echo "Choose an action"
-  echo "Persistent tmux sessions, easy phone access, browser attach for ongoing projects."
+  echo "Persistent tmux sessions with explicit web export or local terminal attach."
   echo
   echo "  ↑/↓ or j/k = move    Enter = select    q = quit"
   echo
-  for i in "${!MENU_ITEMS[@]}"; do
+
+  echo "Project and web actions"
+  echo
+  for ((i = 0; i < ACTION_ITEM_COUNT; i++)); do
+    label="${MENU_ITEMS[$i]}"
     if [[ "$i" -eq "$selected" ]]; then
-      printf '  > %s\n' "${MENU_ITEMS[$i]}"
+      printf '  > %s\n' "$label"
     else
-      printf '    %s\n' "${MENU_ITEMS[$i]}"
+      printf '    %s\n' "$label"
     fi
   done
+
+  echo
+  echo "Running tmux sessions"
+  if [[ ${#TMUX_SESSIONS[@]} -eq 0 ]]; then
+    echo
+    echo "    No running tmux sessions."
+  else
+    echo
+    echo "  Select one to choose web access or attach in this terminal."
+    echo
+    for ((i = ACTION_ITEM_COUNT; i < ${#MENU_ITEMS[@]}; i++)); do
+      label="tmux session: ${MENU_ITEMS[$i]}"
+      if info="$(get_existing_export "${MENU_ITEMS[$i]}")"; then
+        label="$label [web active]"
+      else
+        label="$label [no web export]"
+      fi
+
+      if [[ "$i" -eq "$selected" ]]; then
+        printf '  > %s\n' "$label"
+      else
+        printf '    %s\n' "$label"
+      fi
+    done
+  fi
+
   echo
   echo "Base port: $BASE_PORT"
   echo "Web export timeout: $DURATION"
+  echo "Select a running tmux session to choose browser or direct SSH/CLI attach."
   echo "tmux/codex sessions are persistent."
 }
 
@@ -147,6 +186,24 @@ choose_from_list() {
         ;;
     esac
   done
+}
+
+choose_access_for_session() {
+  local session="$1"
+  local title="${2:-Choose how to access this tmux session}"
+
+  if ! choose_from_list "$title" "$WEB_ACCESS_LABEL" "$LOCAL_ATTACH_LABEL"; then
+    return 1
+  fi
+
+  case "$CHOSEN_ITEM" in
+    "$WEB_ACCESS_LABEL")
+      start_export_for_session "$session"
+      ;;
+    "$LOCAL_ATTACH_LABEL")
+      attach_local_for_session "$session"
+      ;;
+  esac
 }
 
 host_ip() {
@@ -238,6 +295,78 @@ print_export_info() {
   echo
 }
 
+attach_local_for_session() {
+  local session="$1"
+  local switch_err=""
+  local switch_err_file=""
+  local attach_err=""
+  local attach_err_file=""
+
+  if ! tmux has-session -t "$session" 2>/dev/null; then
+    printf '\033[2J\033[H'
+    echo "No tmux session named '$session' was found."
+    pause_message
+    return 1
+  fi
+
+  if [[ -n "${TMUX:-}" ]]; then
+    switch_err_file="$(mktemp 2>/dev/null || true)"
+    if [[ -n "$switch_err_file" ]]; then
+      if tmux switch-client -t "$session" 2>"$switch_err_file"; then
+        rm -f "$switch_err_file"
+        return 0
+      fi
+      switch_err="$(cat "$switch_err_file" 2>/dev/null || true)"
+      rm -f "$switch_err_file"
+    else
+      if tmux switch-client -t "$session"; then
+        return 0
+      fi
+    fi
+  fi
+
+  printf '\033[2J\033[H'
+  echo "Attaching tmux in this terminal."
+  echo
+  echo "Session: $session"
+  echo "This is a direct tmux attach in your current SSH/CLI session."
+  echo "No web export is involved, so tmux sees your terminal directly."
+  echo "Detach with your tmux prefix followed by d."
+  echo
+
+  attach_err_file="$(mktemp 2>/dev/null || true)"
+
+  if [[ -n "$attach_err_file" ]]; then
+    if TMUX='' tmux attach -t "$session" 2>"$attach_err_file"; then
+      rm -f "$attach_err_file"
+      return 0
+    fi
+    attach_err="$(cat "$attach_err_file" 2>/dev/null || true)"
+    rm -f "$attach_err_file"
+  else
+    if TMUX='' tmux attach -t "$session"; then
+      return 0
+    fi
+  fi
+
+  printf '\033[2J\033[H'
+  echo "Failed to open local tmux access for session '$session'."
+  echo
+
+  if [[ -n "$attach_err" ]]; then
+    echo "$attach_err"
+  elif [[ -n "$switch_err" ]]; then
+    echo "$switch_err"
+  else
+    echo "tmux did not return a specific error message."
+  fi
+
+  echo
+  echo "The script tried switch-client first, then a direct attach with TMUX cleared."
+  pause_message
+  return 1
+}
+
 stop_export_for_session_quiet() {
   local session="$1"
   local info pid
@@ -294,6 +423,8 @@ start_export_for_session() {
     print_export_info "Session is already exported." "$session" "$pid" "$port"
     exit 0
   fi
+
+  need_web_tools
 
   port="$(find_free_port)"
 
@@ -353,7 +484,6 @@ create_or_resume_project_session() {
   fi
 
   tmux new-session -d -s "$project_name" "$launch_cmd"
-  start_export_for_session "$project_name"
 }
 
 create_new_project_session() {
@@ -376,16 +506,19 @@ create_new_project_session() {
     fi
 
     if tmux has-session -t "$project_name" 2>/dev/null; then
-      start_export_for_session "$project_name"
+      choose_access_for_session "$project_name" "Project session already exists - choose access"
+      return
     fi
 
     create_or_resume_project_session "$project_name"
+    choose_access_for_session "$project_name" "Choose how to access the new project session"
+    return
   done
 }
 
 attach_existing_project() {
   local dirs=()
-  local path name chosen project_name project_dir info pid port ip host
+  local path name chosen project_name project_dir
 
   if [[ -d "$PROJECTS_DIR" ]]; then
     while IFS= read -r -d '' path; do
@@ -419,25 +552,7 @@ attach_existing_project() {
   project_dir="$PROJECTS_DIR/$project_name"
 
   if tmux has-session -t "$project_name" 2>/dev/null; then
-    printf '\033[2J\033[H'
-    echo "A tmux session for this project is already running."
-    echo
-    echo "Session: $project_name"
-    if info="$(get_existing_export "$project_name")"; then
-      IFS='|' read -r pid port <<<"$info"
-      ip="$(host_ip)"
-      host="$(host_name)"
-      [[ -n "$ip" ]] || ip="127.0.0.1"
-      echo "Existing export:"
-      echo "  http://$ip:$port"
-      echo "  http://$host:$port"
-    else
-      echo "There is no active HTTP export for it right now."
-    fi
-    echo
-    echo "Refusing to create another tmux session."
-    echo "Choose that existing session from the main menu instead."
-    pause_message
+    choose_access_for_session "$project_name" "Project session already exists - choose access"
     return
   fi
 
@@ -447,7 +562,7 @@ attach_existing_project() {
     git init >/dev/null 2>&1
   )
   tmux new-session -d -s "$project_name" "cd $(printf '%q' "$project_dir") && exec codex resume"
-  start_export_for_session "$project_name"
+  choose_access_for_session "$project_name" "Choose how to access the project session"
 }
 
 choose_and_stop_export() {
@@ -545,7 +660,7 @@ while true; do
           choose_and_reinitialize_export
           ;;
         *)
-          start_export_for_session "$chosen"
+          choose_access_for_session "$chosen" "Choose how to access tmux session '$chosen'"
           ;;
       esac
       ;;

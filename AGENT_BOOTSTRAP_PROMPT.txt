@@ -1,7 +1,7 @@
 Build a small Linux CLI project called `agentmux` from scratch.
 
 Goal:
-This tool exists to make long-running tmux sessions easy to manage from your phone while you are on the road, and to make it easy to attach to ongoing project sessions from a web browser without killing the underlying tmux session. The browser connection is temporary. The tmux session is the durable thing.
+This tool exists to make long-running tmux sessions easy to manage from your phone while you are on the road, and to make it easy to attach to ongoing project sessions from either a web browser or the current SSH / CLI terminal without killing the underlying tmux session. The browser connection is temporary. The tmux session is the durable thing.
 
 Project structure:
 - `README.md`
@@ -19,8 +19,6 @@ Implementation constraints:
 Required tools:
 - `bash`
 - `tmux`
-- `ttyd`
-- `timeout` from GNU coreutils
 - `git`
 - `mkdir`
 - `find`
@@ -33,6 +31,10 @@ Required tools:
 Optional but used for project actions:
 - `codex`
 
+Needed for web export actions:
+- `ttyd`
+- `timeout` from GNU coreutils
+
 Behavior requirements:
 
 1. Configuration
@@ -42,7 +44,7 @@ Behavior requirements:
 
 2. Purpose and UX
 - Present an interactive terminal menu navigable with up/down arrows and `j`/`k`.
-- Menu header should make the purpose obvious: persistent tmux sessions, easy phone access, browser attach for ongoing projects.
+- Menu header should make the purpose obvious: persistent tmux sessions, easy phone access, and an explicit choice between browser export and direct terminal attach.
 - Menu entries must include:
   - `[ New project ]`
   - `[ Attach to existing project ]`
@@ -50,16 +52,22 @@ Behavior requirements:
   - `[ Reinitialize web access ]`
   - then all currently running tmux session names
 - `q` should quit.
+- Selecting a running tmux session should clearly ask whether the user wants web access or direct attach in the current terminal.
 
 3. Core model
 - Treat tmux as the persistent backend session.
 - Treat `ttyd` as a disposable browser-facing attachment.
+- Treat local terminal attach as:
+  - `tmux switch-client -t <session>` when the script is already running inside tmux
+  - `tmux attach -t <session>` when it is not
+- Local terminal attach should preserve tmux keyboard behavior as directly as the terminal and SSH session allow.
 - Closing a browser or letting the timeout expire must not kill tmux.
 - Stopping or reinitializing web access must only affect `ttyd`, not tmux.
 
 4. Export behavior
 - Export a tmux session through `ttyd` over HTTP.
 - Bind on all interfaces by default.
+- Require `ttyd` and `timeout` only for web export actions, not for direct local attach.
 - Use the next free port starting from the base port.
 - Reuse an existing export for the same tmux session when possible.
 - If an export already exists for a session, print its info instead of creating another one.
@@ -105,7 +113,10 @@ Behavior requirements:
   - `cd <project_dir> && exec codex`
 - If the directory already exists, start tmux with:
   - `cd <project_dir> && exec codex resume`
-- If a tmux session with that project name already exists, do not create another one. Just show or reuse the export for that existing session.
+- After the session exists, ask whether to:
+  - `[ Open web access ]`
+  - `[ Attach in this terminal ]`
+- If a tmux session with that project name already exists, do not create another one. Let the user choose access mode for that existing session.
 
 8. Attach to existing project flow
 - Show a picker of directories directly inside `~/projects`.
@@ -113,14 +124,12 @@ Behavior requirements:
   - `[ Type project name manually ]`
 - If a tmux session with that project name already exists:
   - do not create a duplicate
-  - show the existing export URL if one exists
-  - otherwise say there is no active HTTP export
-  - tell the user to choose the existing tmux session from the main menu
+  - let the user choose between web access and direct local attach
 - If no tmux session exists:
   - ensure the directory exists
   - run `git init`
   - start tmux with `cd <project_dir> && exec codex resume`
-  - export it over HTTP
+  - then ask whether to open web access or attach in the current terminal
 
 9. Stop existing export
 - Let the user choose among tmux sessions that currently have an active export.
@@ -136,14 +145,17 @@ Behavior requirements:
 
 11. Existing tmux sessions
 - Selecting a normal tmux session from the main menu should:
-  - print existing export info if already exported
-  - otherwise start a new export for that session
+  - ask whether the user wants:
+    - `[ Open web access ]`
+    - `[ Attach in this terminal ]`
+  - print existing export info if already exported, or start a new export, when web access is chosen
+  - switch the current tmux client when already inside tmux, or run direct `tmux attach -t <session>` otherwise, when local attach is chosen
 
 12. README requirements
 - Explain the project in plain language.
-- Make the main point explicit: this is for managing persistent tmux sessions from your phone while traveling, and for attaching to ongoing projects from a web browser.
-- Explain that tmux is persistent and the web URL is temporary.
-- Include a mermaid diagram showing local computer / phone / browser -> ttyd -> tmux -> codex.
+- Make the main point explicit: this is for managing persistent tmux sessions from your phone while traveling, and for attaching to ongoing projects from either a web browser or the current SSH / CLI terminal.
+- Explain that tmux is persistent, the web URL is temporary, and local terminal attach uses `switch-client` inside tmux and `attach` outside it.
+- Include a mermaid diagram showing local computer / phone / browser / SSH terminal -> ttyd or direct attach -> tmux -> codex.
 - Document requirements, install, run commands, menu actions, export detection, typical workflow, example use cases, security notes, and tmux history tips.
 - In the install/run section, show:
   - `chmod +x agentmux/agentmux.sh`
